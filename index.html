@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f8fa" />
+    <meta name="description" content="A simple, private project time calendar for PMILOC." />
+    <title>Daymark — Project time</title>
+  </head>
+  <body>
+    <div id="root"><main style="max-width:620px;margin:12vh auto;padding:28px;font-family:system-ui,sans-serif;color:#263149;background:#fff;border:1px solid #e7eaf0;border-radius:14px"><h1 style="font-size:22px;margin:0 0 8px">Loading Daymark…</h1><p style="color:#687487;line-height:1.6">If this message stays on screen, the app bundle did not start. Check the deployment build and browser console.</p></main></div>
+    <script>
+      (() => {
+        const showStartupError = (message) => {
+          const root = document.getElementById('root');
+          if (!root || root.dataset.appReady === 'true') return;
+          root.innerHTML = '<main style="max-width:620px;margin:12vh auto;padding:28px;font-family:system-ui,sans-serif;color:#263149;background:#fff;border:1px solid #e7eaf0;border-radius:14px"><h1 style="font-size:22px;margin:0 0 8px">Daymark could not start</h1><p style="color:#687487;line-height:1.6">The app bundle failed before React started. Check the Vercel deployment build and its browser console error.</p><pre id="startup-error" style="white-space:pre-wrap;color:#9c4654;font-size:12px"></pre></main>';
+          const details = document.getElementById('startup-error');
+          if (details) details.textContent = message || 'No additional error details were provided.';
+        };
+        window.addEventListener('error', (event) => showStartupError(event.message || 'A script or asset failed to load.'));
+        window.addEventListener('unhandledrejection', (event) => showStartupError(event.reason?.message || String(event.reason || 'An async startup task failed.')));
+        window.__daymarkShowStartupError = showStartupError;
+      })();
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
