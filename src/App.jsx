@@ -136,7 +136,13 @@ function App() {
   const visibleProjects = projects.filter((project) => !project.archived_at && project.user_id === user?.id && !project.is_shared && project.system_key !== 'osticket');
   const osticketProject = projects.find((project) => project.user_id === user?.id && project.system_key === 'osticket' && !project.archived_at);
   const calendarProjects = osticketProject ? [...visibleProjects, osticketProject] : visibleProjects;
-  const sharedProjects = projects.filter((project) => !project.archived_at && project.is_shared && project.system_key === null).sort((a, b) => a.name.localeCompare(b.name));
+  const reservedSharedNames = new Set(projects
+    .filter((project) => !project.archived_at && project.system_key !== null)
+    .map((project) => project.name.trim().toLocaleLowerCase()));
+  const sharedProjects = projects
+    .filter((project) => !project.archived_at && project.is_shared && project.system_key === null)
+    .filter((project) => !reservedSharedNames.has(project.name.trim().toLocaleLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name));
   const personalProjectCount = projects.filter((project) => project.user_id === user?.id && !project.archived_at && !project.system_key && !project.is_shared).length;
   const sharedProjectCount = projects.filter((project) => project.user_id === user?.id && !project.archived_at && !project.system_key && project.is_shared).length;
   const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
