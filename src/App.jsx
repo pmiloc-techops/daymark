@@ -28,6 +28,16 @@ const weekStartFor = (key) => addDays(key, -dateFromKey(key).getUTCDay());
 const hourLabel = (hour) => `${hour % 12 || 12}${hour < 12 ? ' AM' : ' PM'}`;
 const initials = (email = '') => email.split('@')[0].split(/[._-]/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'P';
 const uid = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+const TOUR_STEPS = [
+  { target: 'workspace', title: 'Your workspace', text: 'This is your personal workspace. The sidebar keeps your calendar, shared schedules, and projects together.' },
+  { target: 'my-calendar', title: 'My calendar', text: 'Choose My calendar to plan your own time. Your entries stay private to your account.' },
+  { target: 'shared-schedules', title: 'Shared schedules', text: 'Shared schedules such as osTicket show team availability. Open one to claim an available hour or release an hour you claimed.' },
+  { target: 'your-projects', title: 'Your projects', text: 'Your personal projects live here. Use Create a project to add one; you can also manage sharing from a project’s menu.' },
+  { target: 'tour-replay', title: 'Replay this tour anytime', text: 'This link stays below Create a project so you can revisit the walkthrough whenever you need it.' },
+  { target: 'log-time', title: 'Log your hours', text: 'Click Log time or a day in the calendar. Choose a date and one-hour block, then select the project. Selecting multiple projects splits that hour evenly. Save to add it to your calendar.' },
+  { target: 'monthly-summary', title: 'See your monthly total', text: 'Your total hours and project breakdown update from the hours logged for the month shown here. Use the month arrows to review another month.' },
+  { target: 'calendar', title: 'Your calendar', text: 'Each day shows the project hours you logged. You can add time from a day, or remove an entry by hovering over it and choosing the remove icon.' },
+];
 
 function App() {
   const [session, setSession] = useState(null);
@@ -57,8 +67,15 @@ function App() {
   const [editor, setEditor] = useState(null);
   const [query, setQuery] = useState('');
   const [selectedProjects, setSelectedProjects] = useState([]);
+  const [tourStep, setTourStep] = useState(null);
 
   const user = session?.user;
+  useEffect(() => {
+    if (!user?.id) return;
+    try {
+      if (localStorage.getItem(`daymark-tour-completed:${user.id}`) !== 'true') setTourStep(0);
+    } catch { setTourStep(0); }
+  }, [user?.id]);
   const todayKey = zonedDateKey();
   const monthStart = useMemo(() => dateKey(new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth(), 1, 12))), [month]);
   const monthEnd = useMemo(() => dateKey(new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 0, 12))), [month]);
@@ -312,12 +329,12 @@ function App() {
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand-row"><span className="brand-mark"><CalendarDays size={20} /></span><span className="brand-name">daymark</span><span className="brand-dot" /></div>
-      <div className="workspace-tag"><span className="workspace-icon">P</span><span><b>PMILOC</b><small>Personal workspace</small></span><ChevronDown size={15} /></div>
-      <nav className="primary-nav" aria-label="Main navigation"><button className={`primary-nav-link ${activeView === 'calendar' ? 'active' : ''}`} onClick={() => setActiveView('calendar')} aria-label="My calendar" aria-current={activeView === 'calendar' ? 'page' : undefined}><CalendarDays size={15} /><span>My calendar</span></button></nav>
-      <div className="shared-nav-section"><div className="side-section-head"><span>SHARED SCHEDULES</span></div>
+      <div className="workspace-tag" data-tour="workspace"><span className="workspace-icon">P</span><span><b>PMILOC</b><small>Personal workspace</small></span><ChevronDown size={15} /></div>
+      <nav className="primary-nav" aria-label="Main navigation"><button data-tour="my-calendar" className={`primary-nav-link ${activeView === 'calendar' ? 'active' : ''}`} onClick={() => setActiveView('calendar')} aria-label="My calendar" aria-current={activeView === 'calendar' ? 'page' : undefined}><CalendarDays size={15} /><span>My calendar</span></button></nav>
+      <div className="shared-nav-section" data-tour="shared-schedules"><div className="side-section-head"><span>SHARED SCHEDULES</span></div>
         {osticketProject && <ProjectRow project={osticketProject} active={activeView === 'shared' && sharedProjectId === osticketProject.id} showShared={false} onOpen={() => { setActiveView('shared'); setSharedProjectId(osticketProject.id); setWeekFocus(todayKey); setMonth(monthForKey(todayKey)); }} />}
       </div>
-      <div className="side-section-head"><span>YOUR PROJECTS</span><button className="icon-button add-project-mini" onClick={() => setShowProjectForm(true)} title="Create project" aria-label="Create project" disabled={personalProjectCount >= 3}><Plus size={17} /></button></div>
+      <div data-tour="your-projects"><div className="side-section-head"><span>YOUR PROJECTS</span><button className="icon-button add-project-mini" onClick={() => setShowProjectForm(true)} title="Create project" aria-label="Create project" disabled={personalProjectCount >= 3}><Plus size={17} /></button></div>
       <div className="project-list">
         {visibleProjects.map((project) => <ProjectRow key={project.id} project={project} active={false} showShared={project.system_key === 'meetings'} onRemove={() => archiveProject(project)} onToggleShared={() => toggleProjectSharing(project)} canShare={sharedProjectCount < 3 || project.is_shared} canMakePrivate={personalProjectCount < 3} shareDisabled={Boolean(project.claimed_once_at)} canRemove={!project.claimed_once_at} canManage={!project.system_key} />)}
         {showProjectForm && <form className="new-project" onSubmit={createProject}>
@@ -327,6 +344,8 @@ function App() {
         </form>}
       </div>
       {!showProjectForm && <button className="create-project-button" disabled={personalProjectCount >= 3} title={personalProjectCount >= 3 ? 'You have reached the 3 project limit' : undefined} onClick={() => setShowProjectForm(true)}><Plus size={16} /> {personalProjectCount >= 3 ? '3 project limit reached' : 'Create a project'}</button>}
+      </div>
+      <button className="tour-replay-button" data-tour="tour-replay" onClick={() => { setActiveView('calendar'); setTourStep(0); }}><CircleHelp size={15} /><span>Take the tour</span></button>
       {sharedProjects.length > 0 && <><div className="side-section-head shared-project-heading"><span>SHARED PROJECTS</span></div><div className="project-list">{sharedProjects.map((project) => <ProjectRow key={project.id} project={project} active={activeView === 'shared' && sharedProjectId === project.id} showShared onOpen={() => { setActiveView('shared'); setSharedProjectId(project.id); setWeekFocus(todayKey); setMonth(monthForKey(todayKey)); }} onRemove={() => archiveProject(project)} onToggleShared={() => toggleProjectSharing(project)} shareDisabled={Boolean(project.claimed_once_at)} canRemove={!project.claimed_once_at} canMakePrivate={personalProjectCount < 3} canShare canManage={project.user_id === user.id} />)}</div></>}
       <div className="sidebar-bottom"><div className="tips-card"><div className="tips-icon"><Sparkles size={15} /></div><b>Make time count</b><p>Log your project hours as you go. Your month at a glance is right here.</p></div><div className="user-row"><span className="avatar">{initials(user.email)}</span><span className="user-meta"><b>{user.email?.split('@')[0]}</b><small>{user.email}</small></span><span className="online-dot" aria-label="Signed in" /></div></div>
     </aside>
@@ -335,8 +354,8 @@ function App() {
       <header className="topbar"><div className="breadcrumb"><span>Workspace</span><span className="crumb-slash">/</span><b>My calendar</b></div><div className="topbar-right"><span className="private-label"><span /> {activeView === 'osticket' ? 'Shared availability' : 'Private to you'}</span><span className="top-avatar">{initials(user.email)}</span></div></header>
       <div className="content-wrap">
         <section className="page-intro"><div><div className="eyebrow">YOUR WORK, IN RHYTHM</div><h1>My calendar</h1><p>Plan your time. See where your month went.</p></div><div className="today-badge"><span className="today-icon"><CalendarDays size={16} /></span><span><small>TODAY · TORONTO</small><b>{dateLabel(todayKey, { month: 'short', day: 'numeric' })}</b></span></div></section>
-        <section className="summary-card" aria-label="Monthly summary"><div className="summary-total"><span className="summary-icon"><Clock3 size={19} /></span><div><span className="summary-label">TOTAL THIS MONTH</span><div className="summary-number">{formatHours(totalHours)}<span> hrs</span></div></div></div><div className="summary-divider" /><div className="summary-projects"><div className="summary-topline"><span className="summary-label">PROJECT BREAKDOWN</span><span className="project-count">{totalsList.length} {totalsList.length === 1 ? 'project' : 'projects'}</span></div><div className="breakdown-list">{totalsList.length ? summaryTotals.map(({ project, hours }) => <div className="breakdown-item" key={project.id}><span className="breakdown-name"><i style={{ background: project.color }} />{project.name}</span><b>{formatHours(hours)}h</b></div>) : <span className="empty-breakdown">Your project hours will show up here.</span>}</div></div><div className="summary-month"><span className="month-mini-icon"><CalendarDays size={16} /></span><div><span className="summary-label">VIEWING</span><b>{monthLabel(month)}</b></div></div></section>
-        {activeView === 'shared' ? <OsticketWeekCard project={projectById.get(sharedProjectId)} weekDates={weekDates} weekStart={weekStart} weekEnd={weekEnd} today={todayKey} occupiedSlots={occupiedSlots} ownClaims={ownClaims} loggedSlots={weekLoggedSlots} loading={availabilityLoading} error={availabilityError} ready={availabilityForWeek === `${sharedProjectId}:${weekStart}:${weekEnd}` && !availabilityLoading && !availabilityError} pending={bookingPending} onPrevious={() => moveWeek(-1)} onNext={() => moveWeek(1)} onToday={showCurrentWeek} onClaim={(date, hour) => claimSharedHour(sharedProjectId, date, hour)} onRelease={(date, hour) => releaseSharedHour(sharedProjectId, date, hour)} onRetry={refreshAvailability} /> : <section className="calendar-card">
+        <section className="summary-card" data-tour="monthly-summary" aria-label="Monthly summary"><div className="summary-total"><span className="summary-icon"><Clock3 size={19} /></span><div><span className="summary-label">TOTAL THIS MONTH</span><div className="summary-number">{formatHours(totalHours)}<span> hrs</span></div></div></div><div className="summary-divider" /><div className="summary-projects"><div className="summary-topline"><span className="summary-label">PROJECT BREAKDOWN</span><span className="project-count">{totalsList.length} {totalsList.length === 1 ? 'project' : 'projects'}</span></div><div className="breakdown-list">{totalsList.length ? summaryTotals.map(({ project, hours }) => <div className="breakdown-item" key={project.id}><span className="breakdown-name"><i style={{ background: project.color }} />{project.name}</span><b>{formatHours(hours)}h</b></div>) : <span className="empty-breakdown">Your project hours will show up here.</span>}</div></div><div className="summary-month"><span className="month-mini-icon"><CalendarDays size={16} /></span><div><span className="summary-label">VIEWING</span><b>{monthLabel(month)}</b></div></div></section>
+        {activeView === 'shared' ? <OsticketWeekCard project={projectById.get(sharedProjectId)} weekDates={weekDates} weekStart={weekStart} weekEnd={weekEnd} today={todayKey} occupiedSlots={occupiedSlots} ownClaims={ownClaims} loggedSlots={weekLoggedSlots} loading={availabilityLoading} error={availabilityError} ready={availabilityForWeek === `${sharedProjectId}:${weekStart}:${weekEnd}` && !availabilityLoading && !availabilityError} pending={bookingPending} onPrevious={() => moveWeek(-1)} onNext={() => moveWeek(1)} onToday={showCurrentWeek} onClaim={(date, hour) => claimSharedHour(sharedProjectId, date, hour)} onRelease={(date, hour) => releaseSharedHour(sharedProjectId, date, hour)} onRetry={refreshAvailability} /> : <section className="calendar-card" data-tour="calendar">
           <div className="calendar-toolbar"><div className="calendar-heading"><h2>{monthLabel(month)}</h2><span className="entry-subtitle">{totalHours ? `${formatHours(totalHours)} hours logged` : 'Your time, thoughtfully organized'}</span></div><div className="calendar-actions"><button className="today-button" onClick={() => { setMonth(monthForKey(todayKey)); setSelectedDate(todayKey); }}>Today</button><div className="month-controls"><button aria-label="Previous month" onClick={() => setMonth(new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() - 1, 1, 12)))}><ArrowLeft size={17} /></button><button aria-label="Next month" onClick={() => setMonth(new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 1, 12)))}><ArrowRight size={17} /></button></div></div></div>
           <div className="calendar-grid" role="grid" aria-label={monthLabel(month)}><div className="weekday-row" role="row">{WEEKDAYS.map((day) => <div className="weekday" role="columnheader" key={day}>{day}</div>)}</div><div className="days-grid">{calendarCells.map(({ date, key, day, inMonth }) => {
             const dayEntries = entriesByDate[key] || [];
@@ -348,14 +367,47 @@ function App() {
               {inMonth && <button className="day-add" aria-label={`Add hours on ${dateLabel(key)}`} onClick={(event) => { event.stopPropagation(); setSelectedDate(key); setEditor({ date: key, hour: null }); setSelectedProjects([]); }}> <Plus size={14} /> <span>Add time</span></button>}
             </div>;
           })}</div></div>
-          <div className="calendar-footer"><span><span className="footer-dot" />Click any day to add an hour</span><button onClick={() => { setSelectedDate(todayKey); setEditor({ date: todayKey, hour: null }); setSelectedProjects([]); }}><Plus size={14} /> Log time</button></div>
+          <div className="calendar-footer"><span><span className="footer-dot" />Click any day to add an hour</span><button data-tour="log-time" onClick={() => { setSelectedDate(todayKey); setEditor({ date: todayKey, hour: null }); setSelectedProjects([]); }}><Plus size={14} /> Log time</button></div>
         </section>}
         <div className="privacy-note"><span className="privacy-shield">✓</span>Your calendar is private to your PMILOC account<span className="note-separator">·</span><button title="Your entries and projects are only visible to you.">Learn about privacy <CircleHelp size={13} /></button></div>
       </div>
     </main>
     {editor && <HourDialog editor={editor} selectedDate={selectedDate} projects={calendarProjects} entries={editor.date ? entriesByDate[editor.date] || [] : []} selectedProjects={selectedProjects} setSelectedProjects={setSelectedProjects} query={query} setQuery={setQuery} onClose={() => setEditor(null)} onSave={saveHour} />}
+    {tourStep !== null && <TourOverlay userId={user.id} step={tourStep} onStep={setTourStep} onFinish={() => { try { localStorage.setItem(`daymark-tour-completed:${user.id}`, 'true'); } catch { /* Tour can still finish when storage is unavailable. */ } setTourStep(null); }} />}
     {loading && <div className="sync-indicator"><span />Syncing</div>}
     {toast && <div className="toast" role="status"><Check size={15} />{toast}</div>}
+  </div>;
+}
+
+function TourOverlay({ userId, step, onStep, onFinish }) {
+  const current = TOUR_STEPS[step];
+  const firstVisit = (() => { try { return localStorage.getItem(`daymark-tour-completed:${userId}`) !== 'true'; } catch { return true; } })();
+  // The tour remains mandatory until completion; replays can be closed.
+  const [spotlight, setSpotlight] = useState(null);
+  useEffect(() => {
+    const update = () => {
+      const target = document.querySelector(`[data-tour="${current.target}"]`);
+      if (!target) { setSpotlight(null); return; }
+      const rect = target.getBoundingClientRect();
+      setSpotlight({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+    };
+    const frame = requestAnimationFrame(() => {
+      const target = document.querySelector(`[data-tour="${current.target}"]`);
+      target?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      update();
+    });
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener('resize', update); window.removeEventListener('scroll', update, true); };
+  }, [current]);
+  return <div className="tour-backdrop" role="presentation">
+    {spotlight && <div className="tour-spotlight" style={{ top: spotlight.top - 5, left: spotlight.left - 5, width: spotlight.width + 10, height: spotlight.height + 10 }} />}
+    <section className="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title">
+      <div className="tour-card-top"><span className="tour-kicker">DAYMARK TOUR · {step + 1} OF {TOUR_STEPS.length}</span>{!firstVisit && <button className="tour-close" onClick={() => onStep(null)} aria-label="End tour"><X size={17} /></button>}</div>
+      <h2 id="tour-title">{current.title}</h2><p>{current.text}</p>
+      <div className="tour-progress" aria-hidden="true">{TOUR_STEPS.map((item, index) => <i key={item.target} className={index <= step ? 'done' : ''} />)}</div>
+      <div className="tour-actions">{step > 0 && <button className="tour-back-button" onClick={() => onStep(step - 1)}>Back</button>}<button className="tour-next-button" onClick={() => step === TOUR_STEPS.length - 1 ? onFinish() : onStep(step + 1)}>{step === TOUR_STEPS.length - 1 ? 'Finish tour' : 'Next'}{step !== TOUR_STEPS.length - 1 && <ArrowRight size={15} />}</button></div>
+    </section>
   </div>;
 }
 
