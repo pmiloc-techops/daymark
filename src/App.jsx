@@ -38,6 +38,12 @@ const TOUR_STEPS = [
   { target: 'monthly-summary', title: 'See your monthly total', text: 'Your total hours and project breakdown update from the hours logged for the month shown here. Use the month arrows to review another month.' },
   { target: 'calendar', title: 'Your calendar', text: 'Each day shows the project hours you logged. You can add time from a day, or remove an entry by hovering over it and choosing the remove icon.' },
 ];
+const OSTICKET_TOUR_STEPS = [
+  { target: 'osticket-week-navigation', title: 'Navigate the osTicket week', text: 'This schedule shows one week at a time in Toronto time. Use the arrows to move between weeks or choose This week to return to the current week.' },
+  { target: 'osticket-legend', title: 'Understand the schedule', text: 'A means available, R means reserved, Claimed by you marks your booking, and Blocked means your personal calendar already uses that hour. osTicket hours run from 8 AM to 10 PM.' },
+  { target: 'osticket-availability', title: 'Claim an available hour', text: 'Choose an A slot to reserve that hour for osTicket. Reserved and blocked hours cannot be claimed. Your booking is added to your calendar and monthly total.' },
+  { target: 'osticket-footer', title: 'Release your booking', text: 'Click one of your Claimed slots to release it. This makes the hour available again to the team.' },
+];
 
 function App() {
   const [session, setSession] = useState(null);
@@ -68,6 +74,7 @@ function App() {
   const [query, setQuery] = useState('');
   const [selectedProjects, setSelectedProjects] = useState([]);
   const [tourStep, setTourStep] = useState(null);
+  const [tourKind, setTourKind] = useState('general');
 
   const user = session?.user;
   useEffect(() => {
@@ -152,6 +159,18 @@ function App() {
 
   const visibleProjects = projects.filter((project) => !project.archived_at && project.user_id === user?.id && !project.is_shared && project.system_key !== 'osticket');
   const osticketProject = projects.find((project) => project.system_key === 'osticket' && project.is_shared && !project.archived_at);
+  useEffect(() => {
+    if (!user?.id || activeView !== 'shared' || !osticketProject || sharedProjectId !== osticketProject.id) return;
+    try {
+      if (localStorage.getItem(`daymark-osticket-tour-completed:${user.id}`) !== 'true') {
+        setTourKind('osticket');
+        setTourStep(0);
+      }
+    } catch {
+      setTourKind('osticket');
+      setTourStep(0);
+    }
+  }, [user?.id, activeView, sharedProjectId, osticketProject?.id]);
   const calendarProjects = osticketProject ? [...visibleProjects, osticketProject] : visibleProjects;
   const reservedSharedNames = new Set(projects
     .filter((project) => !project.archived_at && project.system_key !== null)
@@ -345,7 +364,7 @@ function App() {
       </div>
       {!showProjectForm && <button className="create-project-button" disabled={personalProjectCount >= 3} title={personalProjectCount >= 3 ? 'You have reached the 3 project limit' : undefined} onClick={() => setShowProjectForm(true)}><Plus size={16} /> {personalProjectCount >= 3 ? '3 project limit reached' : 'Create a project'}</button>}
       </div>
-      <button className="tour-replay-button" data-tour="tour-replay" onClick={() => { setActiveView('calendar'); setTourStep(0); }}><CircleHelp size={15} /><span>Take the tour</span></button>
+      <button className="tour-replay-button" data-tour="tour-replay" onClick={() => { const onOsticket = activeView === 'shared' && sharedProjectId === osticketProject?.id; setTourKind(onOsticket ? 'osticket' : 'general'); setTourStep(0); }}><CircleHelp size={15} /><span>{activeView === 'shared' && sharedProjectId === osticketProject?.id ? 'Tour this schedule' : 'Take the tour'}</span></button>
       {sharedProjects.length > 0 && <><div className="side-section-head shared-project-heading"><span>SHARED PROJECTS</span></div><div className="project-list">{sharedProjects.map((project) => <ProjectRow key={project.id} project={project} active={activeView === 'shared' && sharedProjectId === project.id} showShared onOpen={() => { setActiveView('shared'); setSharedProjectId(project.id); setWeekFocus(todayKey); setMonth(monthForKey(todayKey)); }} onRemove={() => archiveProject(project)} onToggleShared={() => toggleProjectSharing(project)} shareDisabled={Boolean(project.claimed_once_at)} canRemove={!project.claimed_once_at} canMakePrivate={personalProjectCount < 3} canShare canManage={project.user_id === user.id} />)}</div></>}
       <div className="sidebar-bottom"><div className="tips-card"><div className="tips-icon"><Sparkles size={15} /></div><b>Make time count</b><p>Log your project hours as you go. Your month at a glance is right here.</p></div><div className="user-row"><span className="avatar">{initials(user.email)}</span><span className="user-meta"><b>{user.email?.split('@')[0]}</b><small>{user.email}</small></span><span className="online-dot" aria-label="Signed in" /></div></div>
     </aside>
@@ -373,15 +392,16 @@ function App() {
       </div>
     </main>
     {editor && <HourDialog editor={editor} selectedDate={selectedDate} projects={calendarProjects} entries={editor.date ? entriesByDate[editor.date] || [] : []} selectedProjects={selectedProjects} setSelectedProjects={setSelectedProjects} query={query} setQuery={setQuery} onClose={() => setEditor(null)} onSave={saveHour} />}
-    {tourStep !== null && <TourOverlay userId={user.id} step={tourStep} onStep={setTourStep} onFinish={() => { try { localStorage.setItem(`daymark-tour-completed:${user.id}`, 'true'); } catch { /* Tour can still finish when storage is unavailable. */ } setTourStep(null); }} />}
+    {tourStep !== null && <TourOverlay userId={user.id} kind={tourKind} step={tourStep} onStep={setTourStep} onFinish={() => { try { localStorage.setItem(`${tourKind === 'osticket' ? 'daymark-osticket-tour-completed' : 'daymark-tour-completed'}:${user.id}`, 'true'); } catch { /* Tour can still finish when storage is unavailable. */ } setTourStep(null); }} />}
     {loading && <div className="sync-indicator"><span />Syncing</div>}
     {toast && <div className="toast" role="status"><Check size={15} />{toast}</div>}
   </div>;
 }
 
-function TourOverlay({ userId, step, onStep, onFinish }) {
-  const current = TOUR_STEPS[step];
-  const firstVisit = (() => { try { return localStorage.getItem(`daymark-tour-completed:${userId}`) !== 'true'; } catch { return true; } })();
+function TourOverlay({ userId, kind, step, onStep, onFinish }) {
+  const steps = kind === 'osticket' ? OSTICKET_TOUR_STEPS : TOUR_STEPS;
+  const current = steps[step];
+  const firstVisit = (() => { try { return localStorage.getItem(`${kind === 'osticket' ? 'daymark-osticket-tour-completed' : 'daymark-tour-completed'}:${userId}`) !== 'true'; } catch { return true; } })();
   // The tour remains mandatory until completion; replays can be closed.
   const [spotlight, setSpotlight] = useState(null);
   useEffect(() => {
@@ -403,10 +423,10 @@ function TourOverlay({ userId, step, onStep, onFinish }) {
   return <div className="tour-backdrop" role="presentation">
     {spotlight && <div className="tour-spotlight" style={{ top: spotlight.top - 5, left: spotlight.left - 5, width: spotlight.width + 10, height: spotlight.height + 10 }} />}
     <section className="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title">
-      <div className="tour-card-top"><span className="tour-kicker">DAYMARK TOUR · {step + 1} OF {TOUR_STEPS.length}</span>{!firstVisit && <button className="tour-close" onClick={() => onStep(null)} aria-label="End tour"><X size={17} /></button>}</div>
+      <div className="tour-card-top"><span className="tour-kicker">{kind === 'osticket' ? 'OSTICKET TOUR' : 'DAYMARK TOUR'} · {step + 1} OF {steps.length}</span>{!firstVisit && <button className="tour-close" onClick={() => onStep(null)} aria-label="End tour"><X size={17} /></button>}</div>
       <h2 id="tour-title">{current.title}</h2><p>{current.text}</p>
-      <div className="tour-progress" aria-hidden="true">{TOUR_STEPS.map((item, index) => <i key={item.target} className={index <= step ? 'done' : ''} />)}</div>
-      <div className="tour-actions">{step > 0 && <button className="tour-back-button" onClick={() => onStep(step - 1)}>Back</button>}<button className="tour-next-button" onClick={() => step === TOUR_STEPS.length - 1 ? onFinish() : onStep(step + 1)}>{step === TOUR_STEPS.length - 1 ? 'Finish tour' : 'Next'}{step !== TOUR_STEPS.length - 1 && <ArrowRight size={15} />}</button></div>
+      <div className="tour-progress" aria-hidden="true">{steps.map((item, index) => <i key={item.target} className={index <= step ? 'done' : ''} />)}</div>
+      <div className="tour-actions">{step > 0 && <button className="tour-back-button" onClick={() => onStep(step - 1)}>Back</button>}<button className="tour-next-button" onClick={() => step === steps.length - 1 ? onFinish() : onStep(step + 1)}>{step === steps.length - 1 ? 'Finish tour' : 'Next'}{step !== steps.length - 1 && <ArrowRight size={15} />}</button></div>
     </section>
   </div>;
 }
@@ -439,9 +459,9 @@ function OsticketWeekCard({ project, weekDates, weekStart, weekEnd, today, occup
     ? `${dateLabel(weekStart, { month: 'long' })} ${dateLabel(weekStart, { day: 'numeric' })} – ${dateLabel(weekEnd, { day: 'numeric', year: 'numeric' })}`
     : `${dateLabel(weekStart, { month: 'short', day: 'numeric' })} – ${dateLabel(weekEnd, { month: 'short', day: 'numeric', year: 'numeric' })}`;
   return <section className="calendar-card osticket-week-card">
-    <div className="calendar-toolbar"><div className="calendar-heading"><h2>{dateRange}</h2><span className="entry-subtitle">Shared {project?.name || 'project'} hours · Toronto time</span></div><div className="calendar-actions"><button className="today-button" onClick={onToday}>This week</button><div className="month-controls"><button aria-label="Previous week" onClick={onPrevious}><ArrowLeft size={17} /></button><button aria-label="Next week" onClick={onNext}><ArrowRight size={17} /></button></div></div></div>
-    <div className="osticket-legend"><span><i className="legend-free" />A · Available</span><span><i className="legend-taken" />R · Reserved</span><span><i className="legend-yours" />Claimed by you</span><span><i className="legend-logged" />Blocked by your calendar</span>{project?.system_key === 'osticket' && <span>8 AM–10 PM</span>}{loading && <span className="availability-refresh"><span />Updating availability</span>}{error && <span className="availability-failure" role="alert">Could not load slots <button onClick={onRetry}>Retry</button></span>}</div>
-    <div className="week-scroll" role="grid" aria-label={`Shared ${project?.name || 'project'} schedule for ${dateRange}`}>
+    <div className="calendar-toolbar"><div className="calendar-heading"><h2>{dateRange}</h2><span className="entry-subtitle">Shared {project?.name || 'project'} hours · Toronto time</span></div><div className="calendar-actions" data-tour="osticket-week-navigation"><button className="today-button" onClick={onToday}>This week</button><div className="month-controls"><button aria-label="Previous week" onClick={onPrevious}><ArrowLeft size={17} /></button><button aria-label="Next week" onClick={onNext}><ArrowRight size={17} /></button></div></div></div>
+    <div className="osticket-legend" data-tour="osticket-legend"><span><i className="legend-free" />A · Available</span><span><i className="legend-taken" />R · Reserved</span><span><i className="legend-yours" />Claimed by you</span><span><i className="legend-logged" />Blocked by your calendar</span>{project?.system_key === 'osticket' && <span>8 AM–10 PM</span>}{loading && <span className="availability-refresh"><span />Updating availability</span>}{error && <span className="availability-failure" role="alert">Could not load slots <button onClick={onRetry}>Retry</button></span>}</div>
+    <div className="week-scroll" data-tour="osticket-availability" role="grid" aria-label={`Shared ${project?.name || 'project'} schedule for ${dateRange}`}>
       <div className="week-grid-head" role="row"><div className="week-time-heading" role="columnheader">TORONTO</div>{weekDates.map((date) => <div className={`week-day-heading ${date === today ? 'today-week-column' : ''}`} role="columnheader" key={date}><span>{dateLabel(date, { weekday: 'short' })}</span><b>{dateLabel(date, { day: 'numeric' })}</b></div>)}</div>
     <div className="week-hour-grid">{Array.from({ length: project?.system_key === 'osticket' ? 14 : 24 }, (_, index) => index + (project?.system_key === 'osticket' ? 8 : 0)).map((hour) => <div className="week-hour-row" role="row" key={hour}><div className="week-hour-label" role="rowheader">{hourLabel(hour)}</div>{weekDates.map((date) => {
         const key = `${date}:${hour}`;
@@ -453,7 +473,7 @@ function OsticketWeekCard({ project, weekDates, weekStart, weekEnd, today, occup
         return <div className="week-slot-cell" role="gridcell" key={key}><button className={`week-slot ${!ready ? 'slot-loading' : isOwned ? 'slot-owned' : isOccupied ? 'slot-reserved' : isLogged ? 'slot-logged' : 'slot-free'} ${isPending ? 'slot-pending' : ''}`} disabled={!ready || isPending || ((isOccupied || isLogged) && !isOwned)} onClick={() => isOwned ? onRelease(date, hour) : onClaim(date, hour)} aria-label={`${dateLabel(date, { weekday: 'long', month: 'long', day: 'numeric' })}, ${hourLabel(hour)} to ${hourLabel((hour + 1) % 24)}: ${isOwned && ready ? 'your claimed booking, click to release' : label.toLowerCase()}`} title={isOwned ? 'Claimed by you · click to release' : isOccupied ? 'Reserved by another user' : isLogged ? 'Already blocked by your other project' : 'Available · click to claim'}>{!ready ? '—' : isPending ? '…' : isOwned ? 'Claimed' : isOccupied ? 'R' : isLogged ? 'Blocked' : 'A'}</button></div>;
       })}</div>)}</div>
     </div>
-    <div className="calendar-footer"><span><span className="footer-dot" />Select an available hour to claim it. You can release your own hours.</span><span className="week-time-note">All dates and times use America/Toronto.</span></div>
+    <div className="calendar-footer" data-tour="osticket-footer"><span><span className="footer-dot" />Select an available hour to claim it. You can release your own hours.</span><span className="week-time-note">All dates and times use America/Toronto.</span></div>
   </section>;
 }
 
