@@ -134,7 +134,7 @@ function App() {
   }, [user, activeView, sharedProjectId, refreshAvailability]);
 
   const visibleProjects = projects.filter((project) => !project.archived_at && project.user_id === user?.id && !project.is_shared && project.system_key !== 'osticket');
-  const osticketProject = projects.find((project) => project.user_id === user?.id && project.system_key === 'osticket' && !project.archived_at);
+  const osticketProject = projects.find((project) => project.system_key === 'osticket' && project.is_shared && !project.archived_at);
   const calendarProjects = osticketProject ? [...visibleProjects, osticketProject] : visibleProjects;
   const reservedSharedNames = new Set(projects
     .filter((project) => !project.archived_at && project.system_key !== null)
@@ -315,7 +315,7 @@ function App() {
       <div className="workspace-tag"><span className="workspace-icon">P</span><span><b>PMILOC</b><small>Personal workspace</small></span><ChevronDown size={15} /></div>
       <nav className="primary-nav" aria-label="Main navigation"><button className={`primary-nav-link ${activeView === 'calendar' ? 'active' : ''}`} onClick={() => setActiveView('calendar')} aria-label="My calendar" aria-current={activeView === 'calendar' ? 'page' : undefined}><CalendarDays size={15} /><span>My calendar</span></button></nav>
       <div className="shared-nav-section"><div className="side-section-head"><span>SHARED SCHEDULES</span></div>
-        {projects.filter((project) => project.system_key === 'osticket' && !project.archived_at).map((project) => <ProjectRow key={project.id} project={project} active={activeView === 'shared' && sharedProjectId === project.id} showShared={false} onOpen={() => { setActiveView('shared'); setSharedProjectId(project.id); setWeekFocus(todayKey); setMonth(monthForKey(todayKey)); }} />)}
+        {osticketProject && <ProjectRow project={osticketProject} active={activeView === 'shared' && sharedProjectId === osticketProject.id} showShared={false} onOpen={() => { setActiveView('shared'); setSharedProjectId(osticketProject.id); setWeekFocus(todayKey); setMonth(monthForKey(todayKey)); }} />}
       </div>
       <div className="side-section-head"><span>YOUR PROJECTS</span><button className="icon-button add-project-mini" onClick={() => setShowProjectForm(true)} title="Create project" aria-label="Create project" disabled={personalProjectCount >= 3}><Plus size={17} /></button></div>
       <div className="project-list">
